@@ -1,4 +1,4 @@
-#include "TripleBuffer.hpp"
+#include "RealtimeValue.hpp"
 #include <catch2/catch_test_macros.hpp>
 
 #include <atomic>
@@ -32,10 +32,10 @@ bool isConsistent(const DummyState& s)
 }
 } // namespace
 
-TEST_CASE("TripleBuffer - initial state is visible without any edit", "[TripleBuffer]")
+TEST_CASE("RealtimeValue - initial state is visible without any edit", "[RealtimeValue]")
 {
     const DummyState initial = makeState(10);
-    TripleBuffer<DummyState> rdoc(initial);
+    RealtimeValue<DummyState> rdoc(initial);
 
     const auto& s = rdoc.read();
     REQUIRE(s.val1 == 10);
@@ -43,9 +43,9 @@ TEST_CASE("TripleBuffer - initial state is visible without any edit", "[TripleBu
     REQUIRE(s.tag == "v10");
 }
 
-TEST_CASE("TripleBuffer - a single edit is fully visible on the next read", "[TripleBuffer]")
+TEST_CASE("RealtimeValue - a single edit is fully visible on the next read", "[RealtimeValue]")
 {
-    TripleBuffer<DummyState> rdoc(makeState(1));
+    RealtimeValue<DummyState> rdoc(makeState(1));
 
     rdoc.edit([](DummyState& d) { d = makeState(42); });
 
@@ -55,9 +55,9 @@ TEST_CASE("TripleBuffer - a single edit is fully visible on the next read", "[Tr
     REQUIRE(s.tag == "v42");
 }
 
-TEST_CASE("TripleBuffer - reading again with no new edit returns the same buffer", "[TripleBuffer]")
+TEST_CASE("RealtimeValue - reading again with no new edit returns the same buffer", "[RealtimeValue]")
 {
-    TripleBuffer<DummyState> rdoc(makeState(1));
+    RealtimeValue<DummyState> rdoc(makeState(1));
     rdoc.edit([](DummyState& d) { d = makeState(5); });
 
     const auto& first  = rdoc.read();
@@ -69,13 +69,13 @@ TEST_CASE("TripleBuffer - reading again with no new edit returns the same buffer
     REQUIRE(second.val1 == 5);
 }
 
-TEST_CASE("TripleBuffer - consecutive edits with no intervening read are not lost", "[TripleBuffer]")
+TEST_CASE("RealtimeValue - consecutive edits with no intervening read are not lost", "[RealtimeValue]")
 {
     // Regression test: edit() must resync from the last state it published,
     // not from whatever stale content happens to sit in its scratch buffer.
     // Each edit here depends on the previous one, so any dropped/stale edit
     // would show up as a wrong final value.
-    TripleBuffer<DummyState> rdoc(makeState(0));
+    RealtimeValue<DummyState> rdoc(makeState(0));
 
     for (int i = 0; i < 5; ++i)
         rdoc.edit([](DummyState& d) { d = makeState(d.val1 + 1); });
@@ -86,9 +86,9 @@ TEST_CASE("TripleBuffer - consecutive edits with no intervening read are not los
     REQUIRE(s.tag == "v5");
 }
 
-TEST_CASE("TripleBuffer - edits interleaved with reads stay cumulative", "[TripleBuffer]")
+TEST_CASE("RealtimeValue - edits interleaved with reads stay cumulative", "[RealtimeValue]")
 {
-    TripleBuffer<DummyState> rdoc(makeState(0));
+    RealtimeValue<DummyState> rdoc(makeState(0));
 
     for (int i = 0; i < 5; ++i)
     {
@@ -98,9 +98,9 @@ TEST_CASE("TripleBuffer - edits interleaved with reads stay cumulative", "[Tripl
     }
 }
 
-TEST_CASE("TripleBuffer - concurrent read/write: no torn reads, no lost updates", "[TripleBuffer]")
+TEST_CASE("RealtimeValue - concurrent read/write: no torn reads, no lost updates", "[RealtimeValue]")
 {
-    TripleBuffer<DummyState> rdoc(makeState(0));
+    RealtimeValue<DummyState> rdoc(makeState(0));
 
     std::atomic<bool> running{true};
     std::atomic<bool> tornRead{false};
