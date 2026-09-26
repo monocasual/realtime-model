@@ -2,10 +2,9 @@
 
 #include <array>
 #include <atomic>
-#include <cstdint>
 
-/* RealtimeDocument
-This class lets one thread read the Document and another thread update it,
+/* TripleBuffer
+This class lets one thread read a Document and another thread update it,
 with neither one ever blocking on the other, and neither one ever touching
 memory the other is using at the same instant.
 
@@ -44,10 +43,10 @@ Usage notes
   read(). Don't hold on to it across multiple calls. */
 
 template <typename Document>
-class RealtimeDocument final
+class TripleBuffer final
 {
 public:
-    explicit RealtimeDocument(const Document& d)
+    explicit TripleBuffer(const Document& d)
         : m_docs{d, d, d}
         , m_realtimeIdx(0)
         , m_writerIdx(1)
