@@ -45,6 +45,12 @@ Usage notes
 template <typename T>
 class RealtimeValue final
 {
+	static_assert(
+		std::is_copy_constructible_v<T> &&
+		std::is_copy_assignable_v<T>,
+		"RealtimeValue<T> requires T to be copyable: it keeps 3 buffered "
+		"copies and republishes by full copy-assignment.");
+
 public:
     explicit RealtimeValue(const T& v)
         : m_values{v, v, v}
