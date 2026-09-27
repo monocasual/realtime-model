@@ -2,7 +2,6 @@
 
 #include "RealtimeValue.hpp"
 #include "Writer.hpp"
-
 #include <functional>
 #include <utility>
 
@@ -107,6 +106,19 @@ public:
         const Document& d = m_document.read();
         const Assets&   a = m_assets.read();
         return RealtimeReadLock(d, a, m_parameters);
+    }
+
+	/* Load
+	Helper function for loading a new document + asset combo, used when
+	you need to load new data read e.g. from disk. */
+	
+	void load(Document&& document, Assets&& assets)
+    {
+    	writeWithNewAsset([d = std::move(document), a = std::move(assets)]
+						   (Document& doc, Assets& ass) mutable {
+			ass = std::move(a);
+			doc = std::move(d);
+		});
     }
 
     /* Direct, unqueued access to Parameters for any non-realtime thread
