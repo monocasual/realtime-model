@@ -36,7 +36,7 @@ can't happen.
 Usage notes
 -----------
 - read() must only ever be called from the single Real-Time Audio thread;
-- edit() must only ever be called from the single Writer thread;
+- write() must only ever be called from the single Writer thread;
 - This is a single-reader/single-writer design: it does not support
   multiple concurrent readers or multiple concurrent writers;
 - The reference returned by read() is only valid until the next call to
@@ -84,12 +84,12 @@ public:
 		return m_values[m_realtimeIdx];
 	}
 
-	/* edit()
+	/* write()
 	Call ONLY from the single Writer thread. Applies f to the value and
 	publishes the result. */
 
 	template <typename Edit>
-	void edit(Edit&& f)
+	void write(Edit&& f)
 	{
 		// Our scratch buffer might be old (if the Audio thread hasn't
 		// picked up our last update yet), so bring it up to date first.

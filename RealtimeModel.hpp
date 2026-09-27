@@ -90,7 +90,7 @@ public:
 	{
 		m_writer.push([this, f = std::move(f)]()
 		{
-			m_document.edit([&](Document& d)
+			m_document.write([&](Document& d)
 			{ f(d); });
 		});
 	}
@@ -104,7 +104,7 @@ public:
 	{
 		m_writer.push([this, f = std::move(f)]()
 		{
-			m_assets.edit([&](Assets& a)
+			m_assets.write([&](Assets& a)
 			{ f(a); });
 		});
 	}
@@ -120,9 +120,9 @@ public:
 	{
 		m_writer.push([this, f = std::move(f)]()
 		{
-			m_document.edit([&](Document& d)
+			m_document.write([&](Document& d)
 			{
-				m_assets.edit([&](Assets& a)
+				m_assets.write([&](Assets& a)
 				{ f(d, a); });
 			});
 		});

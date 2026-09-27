@@ -46,7 +46,7 @@ TEST_CASE("RealtimeValue - a single edit is fully visible on the next read", "[R
 {
 	RealtimeValue<DummyState> rdoc(makeState(1));
 
-	rdoc.edit([](DummyState& d)
+	rdoc.write([](DummyState& d)
 	{ d = makeState(42); });
 
 	const auto& s = rdoc.read();
@@ -58,7 +58,7 @@ TEST_CASE("RealtimeValue - a single edit is fully visible on the next read", "[R
 TEST_CASE("RealtimeValue - reading again with no new edit returns the same buffer", "[RealtimeValue]")
 {
 	RealtimeValue<DummyState> rdoc(makeState(1));
-	rdoc.edit([](DummyState& d)
+	rdoc.write([](DummyState& d)
 	{ d = makeState(5); });
 
 	const auto& first  = rdoc.read();
@@ -79,7 +79,7 @@ TEST_CASE("RealtimeValue - consecutive edits with no intervening read are not lo
 	RealtimeValue<DummyState> rdoc(makeState(0));
 
 	for (int i = 0; i < 5; ++i)
-		rdoc.edit([](DummyState& d)
+		rdoc.write([](DummyState& d)
 		{ d = makeState(d.val1 + 1); });
 
 	const auto& s = rdoc.read();
@@ -94,7 +94,7 @@ TEST_CASE("RealtimeValue - edits interleaved with reads stay cumulative", "[Real
 
 	for (int i = 0; i < 5; ++i)
 	{
-		rdoc.edit([](DummyState& d)
+		rdoc.write([](DummyState& d)
 		{ d = makeState(d.val1 + 2); });
 		const auto& s = rdoc.read();
 		REQUIRE(s.val1 == (i + 1) * 2);
@@ -116,7 +116,7 @@ TEST_CASE("RealtimeValue - concurrent read/write: no torn reads, no lost updates
 		while (running.load(std::memory_order_relaxed))
 		{
 			++counter;
-			rdoc.edit([counter](DummyState& d)
+			rdoc.write([counter](DummyState& d)
 			{ d = makeState(counter); });
 			lastPublished.store(counter, std::memory_order_relaxed);
 		}
