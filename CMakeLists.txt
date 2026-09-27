@@ -5,7 +5,8 @@ project(RealtimeModel LANGUAGES CXX)
 # Header-only library: just the include paths, no sources to compile.
 add_library(RealtimeModel INTERFACE
         RealtimeValue.hpp
-        Writer.hpp)
+        Writer.hpp
+        RealtimeAssetMap.hpp)
 target_include_directories(RealtimeModel INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(RealtimeModel INTERFACE cxx_std_23)
 
