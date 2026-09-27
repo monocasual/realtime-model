@@ -63,21 +63,17 @@ TEST_CASE("RealtimeModel - initial state is visible without any write", "[Realti
 TEST_CASE("RealtimeModel - writeDocument() is applied and visible", "[RealtimeModel]")
 {
 	Model model;
-	model.start();
 
 	model.writeDocument([](DummyDocument& d)
 	{ d.trackCount = 3; });
 
 	REQUIRE(waitUntil([&]
 	{ return model.read().getDocument().trackCount == 3; }));
-
-	model.stop();
 }
 
 TEST_CASE("RealtimeModel - writeAssets() is applied and visible", "[RealtimeModel]")
 {
 	Model model;
-	model.start();
 
 	model.writeAssets([](DummyAssets& a)
 	{ a.files[7] = std::make_shared<std::string>("hello"); });
@@ -87,14 +83,11 @@ TEST_CASE("RealtimeModel - writeAssets() is applied and visible", "[RealtimeMode
 
 	const auto lock = model.read();
 	REQUIRE(*lock.getAssets().files.at(7) == "hello");
-
-	model.stop();
 }
 
 TEST_CASE("RealtimeModel - writeDocumentAndAssets() applies both together", "[RealtimeModel]")
 {
 	Model model;
-	model.start();
 
 	model.writeDocumentAndAssets([](DummyDocument& d, DummyAssets& a)
 	{
@@ -109,8 +102,6 @@ TEST_CASE("RealtimeModel - writeDocumentAndAssets() applies both together", "[Re
 	// must already be there too.
 	const auto lock = model.read();
 	REQUIRE(lock.getAssets().files.count(42) == 1);
-
-	model.stop();
 }
 
 TEST_CASE("RealtimeModel - consecutive writes with no intervening read are not lost", "[RealtimeModel]")
@@ -118,7 +109,6 @@ TEST_CASE("RealtimeModel - consecutive writes with no intervening read are not l
 	// Make sure multiple calls to writeDocument are all stored correctly
 	// and nothing is lost in the way.
 	Model model;
-	model.start();
 
 	for (int i = 0; i < 10; ++i)
 		model.writeDocument([](DummyDocument& d)
@@ -126,15 +116,12 @@ TEST_CASE("RealtimeModel - consecutive writes with no intervening read are not l
 
 	REQUIRE(waitUntil([&]
 	{ return model.read().getDocument().trackCount == 10; }));
-
-	model.stop();
 }
 
 TEST_CASE("RealtimeModel - load() replaces both Document and Assets", "[RealtimeModel]")
 {
 	// Reproduce a "load project from disk" process.
 	Model model;
-	model.start();
 
 	model.writeDocumentAndAssets([](DummyDocument& d, DummyAssets& a)
 	{
@@ -161,8 +148,6 @@ TEST_CASE("RealtimeModel - load() replaces both Document and Assets", "[Realtime
 	REQUIRE(lock.getDocument().referencedAssetId == 99);
 	REQUIRE(lock.getAssets().files.count(99) == 1);
 	REQUIRE(lock.getAssets().files.count(1) == 0); // old asset discarded, not merged in
-
-	model.stop();
 }
 
 TEST_CASE("RealtimeModel - getParameters() and RealtimeReadLock refer to the same object", "[RealtimeModel]")

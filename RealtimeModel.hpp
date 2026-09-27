@@ -74,15 +74,13 @@ public:
 	: m_document(Document{})
 	, m_assets(Assets{})
 	{
+		m_writer.start();
 	}
 
-	~RealtimeModel() { stop(); }
+	~RealtimeModel() { m_writer.stop(); }
 
 	RealtimeModel(const RealtimeModel&)            = delete;
 	RealtimeModel& operator=(const RealtimeModel&) = delete;
-
-	void start() { m_writer.start(); }
-	void stop() { m_writer.stop(); }
 
 	/* WriteDocument()
 	Call from any thread non-realtime thread (GUI, MIDI, workers), for edits
