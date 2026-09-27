@@ -66,7 +66,12 @@ public:
         Parameters&     m_parameters;
     };
 
-    RealtimeModel() = default;
+    RealtimeModel()
+	: m_document(Document{})
+	, m_assets(Assets{})
+    {
+    }
+
     ~RealtimeModel() { stop(); }
 
     RealtimeModel(const RealtimeModel&) = delete;
