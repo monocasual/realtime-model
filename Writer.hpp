@@ -1,7 +1,7 @@
 #pragma once
 
-#include <blockingconcurrentqueue.h>
 #include <atomic>
+#include <blockingconcurrentqueue.h>
 #include <chrono>
 #include <functional>
 #include <thread>
@@ -20,7 +20,7 @@ public:
 	Writer() = default;
 	~Writer() { stop(); }
 
-	Writer(const Writer&) = delete;
+	Writer(const Writer&)            = delete;
 	Writer& operator=(const Writer&) = delete;
 
 	void start()
@@ -53,7 +53,8 @@ public:
 	   Call from ANY thread (GUI, MIDI, Workers). */
 	void push(Command cmd)
 	{
-		if (!cmd) return;
+		if (!cmd)
+			return;
 
 		m_queue.enqueue(std::move(cmd));
 	}
@@ -86,6 +87,6 @@ private:
 
 	moodycamel::BlockingConcurrentQueue<Command> m_queue;
 
-	std::thread m_thread;
+	std::thread       m_thread;
 	std::atomic<bool> m_running{false};
 };

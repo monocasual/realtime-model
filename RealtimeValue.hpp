@@ -46,85 +46,85 @@ template <typename T>
 class RealtimeValue final
 {
 	static_assert(
-		std::is_copy_constructible_v<T> &&
-		std::is_copy_assignable_v<T>,
-		"RealtimeValue<T> requires T to be copyable: it keeps 3 buffered "
-		"copies and republishes by full copy-assignment.");
+	    std::is_copy_constructible_v<T> &&
+	        std::is_copy_assignable_v<T>,
+	    "RealtimeValue<T> requires T to be copyable: it keeps 3 buffered "
+	    "copies and republishes by full copy-assignment.");
 
 public:
-    explicit RealtimeValue(const T& v)
-        : m_values{v, v, v}
-        , m_realtimeIdx(0)
-        , m_writerIdx(1)
-		, m_sharedSlot(0b010) // index 2, no pending update yet
-        , m_lastPublishedIdx(1) // same as m_writerIdx: nothing published yet
-    {
-    }
+	explicit RealtimeValue(const T& v)
+	: m_values{v, v, v}
+	, m_realtimeIdx(0)
+	, m_writerIdx(1)
+	, m_sharedSlot(0b010)   // index 2, no pending update yet
+	, m_lastPublishedIdx(1) // same as m_writerIdx: nothing published yet
+	{
+	}
 
-    /* read()
-    Call ONLY from the Real-Time Audio thread. Returns the current value.
-    If the Writer thread has published a newer one since our last call, grab it
-    first. */
+	/* read()
+	Call ONLY from the Real-Time Audio thread. Returns the current value.
+	If the Writer thread has published a newer one since our last call, grab it
+	first. */
 
-    const T& read()
-    {
-        // Peek at the shared slot: is there something we haven't picked up yet?
-        const std::uint32_t current = m_sharedSlot.load(std::memory_order_acquire);
+	const T& read()
+	{
+		// Peek at the shared slot: is there something we haven't picked up yet?
+		const std::uint32_t current = m_sharedSlot.load(std::memory_order_acquire);
 
-        if (current & PENDING_BIT)
-        {
-            // Yes. Swap it out: we hand back our own buffer (marked as
-            // "nothing pending", since we're not the Writer), and take
-            // whatever's there now in one atomic step, so there's no
-            // gap where a second publish could leave a leftover signal.
-            const std::uint32_t old = m_sharedSlot.exchange(m_realtimeIdx, std::memory_order_acq_rel);
-            m_realtimeIdx = old & INDEX_MASK;
-        }
+		if (current & PENDING_BIT)
+		{
+			// Yes. Swap it out: we hand back our own buffer (marked as
+			// "nothing pending", since we're not the Writer), and take
+			// whatever's there now in one atomic step, so there's no
+			// gap where a second publish could leave a leftover signal.
+			const std::uint32_t old = m_sharedSlot.exchange(m_realtimeIdx, std::memory_order_acq_rel);
+			m_realtimeIdx           = old & INDEX_MASK;
+		}
 
-        return m_values[m_realtimeIdx];
-    }
+		return m_values[m_realtimeIdx];
+	}
 
-    /* edit()
-    Call ONLY from the single Writer thread. Applies f to the value and
-    publishes the result. */
+	/* edit()
+	Call ONLY from the single Writer thread. Applies f to the value and
+	publishes the result. */
 
-    template <typename Edit>
-    void edit(Edit&& f)
-    {
-        // Our scratch buffer might be old (if the Audio thread hasn't
-        // picked up our last update yet), so bring it up to date first.
-        m_values[m_writerIdx] = m_values[m_lastPublishedIdx];
+	template <typename Edit>
+	void edit(Edit&& f)
+	{
+		// Our scratch buffer might be old (if the Audio thread hasn't
+		// picked up our last update yet), so bring it up to date first.
+		m_values[m_writerIdx] = m_values[m_lastPublishedIdx];
 
-        // Now apply the change on top of the up-to-date copy.
-        f(m_values[m_writerIdx]);
+		// Now apply the change on top of the up-to-date copy.
+		f(m_values[m_writerIdx]);
 
-        // Remember this as the latest version we've produced.
-        m_lastPublishedIdx = m_writerIdx;
+		// Remember this as the latest version we've produced.
+		m_lastPublishedIdx = m_writerIdx;
 
-        // Publish it: swap our buffer with the shared one, tagged as
-        // "pending". Whatever comes back is guaranteed to be free (the
-        // Audio thread can't be using it), regardless of its own tag.
-        const std::uint32_t old = m_sharedSlot.exchange(m_writerIdx | PENDING_BIT, std::memory_order_acq_rel);
-        m_writerIdx = old & INDEX_MASK;
-    }
+		// Publish it: swap our buffer with the shared one, tagged as
+		// "pending". Whatever comes back is guaranteed to be free (the
+		// Audio thread can't be using it), regardless of its own tag.
+		const std::uint32_t old = m_sharedSlot.exchange(m_writerIdx | PENDING_BIT, std::memory_order_acq_rel);
+		m_writerIdx             = old & INDEX_MASK;
+	}
 
 private:
 	static constexpr std::uint32_t PENDING_BIT = 0b100; // bit 2: "not yet picked up"
 	static constexpr std::uint32_t INDEX_MASK  = 0b011; // bits 0-1: which buffer (0-2)
 
-    std::array<T, 3> m_values;
+	std::array<T, 3> m_values;
 
-    // Which buffer the Audio thread is currently reading (its own, private index)
-    int m_realtimeIdx;
+	// Which buffer the Audio thread is currently reading (its own, private index)
+	int m_realtimeIdx;
 
-    // Which buffer the Writer thread is currently editing (its own, private index)
-    int m_writerIdx;
+	// Which buffer the Writer thread is currently editing (its own, private index)
+	int m_writerIdx;
 
-    // The buffer currently "in transit" between the two threads, packed
-    // together with whether it's still unread (see class comment above)
-    std::atomic<std::uint32_t> m_sharedSlot;
+	// The buffer currently "in transit" between the two threads, packed
+	// together with whether it's still unread (see class comment above)
+	std::atomic<std::uint32_t> m_sharedSlot;
 
-    // Which buffer holds the latest version the Writer thread itself produced
-    // (only the Writer thread touches this, so it needs no synchronization)
-    int m_lastPublishedIdx;
+	// Which buffer holds the latest version the Writer thread itself produced
+	// (only the Writer thread touches this, so it needs no synchronization)
+	int m_lastPublishedIdx;
 };
