@@ -12,4 +12,5 @@ target_compile_features(RealtimeModel INTERFACE cxx_std_23)
 
 include(cmake/CPM.cmake)
 CPMAddPackage("gh:catchorg/Catch2@3.5.4")
+CPMAddPackage("gh:cameron314/concurrentqueue@1.0.4")
 add_subdirectory(tests)
