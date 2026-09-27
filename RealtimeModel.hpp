@@ -6,40 +6,47 @@
 #include <utility>
 
 /* RealtimeModel
-The user-facing API, and the single source of truth: Document, Assets, and
-Parameters all live inside RealtimeModel, owned by value. There's nothing to
-pass in and nothing to keep alive externally.
+Owns all shared state for the audio engine: Document (project structure),
+Assets (audio files, plugins), and Parameters (things like the playhead).
+It is the only way any thread should touch them. Nobody outside this class
+holds a copy or a reference to that state directly.
 
-Document only ever holds IDs referencing entries in Assets, never the
-assets themselves. Most edits only ever touch one of the two, so there are
-three separate entry points rather than one that always pays for both:
-  - write()            — Document only (the common case)
-  - writeAssets()       — Assets only (load/unload an asset)
-  - writeWithNewAsset() — both together, for the rare case of adding an
-                          asset and referencing it from Document in one
-                          logical transaction
+Two threads use this differently:
+  - The Real-Time Audio thread calls read() once per callback to get a
+	snapshot, and getParameters() (via that snapshot) to update things
+	like the playhead directly. It never blocks and never waits on anyone.
+  - Every other thread (GUI, MIDI, workers) calls writeDocument(),
+	writeAssets(), or writeDocumentAndAssets() to request a change. These
+	changes are queued and applied, one at a time, on a single dedicated
+	writer thread. Never directly and never on the calling thread.
 
-writeWithNewAsset() nests Document's edit() around Assets' edit(), which
-structurally guarantees Assets publishes before Document — so a Document
-update that references a new asset can never become visible before that
-asset does. read() mirrors this by reading Document before Assets. Don't
-reorder either without re-deriving why — it's not cosmetic.
+Document and Assets are kept as two separate pieces because most edits
+only touch one of them, and Document only ever refers to Assets by ID,
+never the actual audio data. That split is why there are three write
+methods instead of one: use whichever matches what you're actually
+changing, so you're not paying to update Assets just to rename a track.
 
-Parameters is not part of that scheme at all: it's not triple-buffered,
-there's only ever one instance, and its fields are individually atomic —
-so it needs no snapshotting, just a live reference. The Real-Time Audio
-thread reaches it through RealtimeReadLock, same call as everything else;
-getParameters() below is the equivalent direct path for any other thread
-(GUI, writer, ...). Both refer to the exact same object. */
+Expectations:
+  - read() is for the Real-Time Audio thread only, once per callback.
+	Don't call it from anywhere else, and don't hold on to what it
+	returns past that one callback.
+  - writeDocument()/writeAssets()/writeDocumentAndAssets() are for every
+	other thread. Never call these from the Real-Time Audio thread.
+	They queue work, they don't apply it immediately.
+  - When adding a new asset that Document will reference, always use
+	writeDocumentAndAssets() (or load(), for loading a whole project). */
+
 template <typename Document, typename Assets, typename Parameters>
 class RealtimeModel
 {
 public:
-    /* A short-lived, per-callback bundle of the current Document, Assets,
-       and Parameters. Document/Assets are snapshots valid until the next
-       call to read() — don't hold on to them past that. Parameters is a
-       live reference to the one instance, always current. */
-    class RealtimeReadLock
+    /* RealtimeReadLock
+    A short-lived, per-callback bundle of the current Document, Assets, and
+    Parameters. Document/Assets are snapshots valid until the next call to
+    read(): don't hold on to them past that. Parameters is a live reference to
+    the one instance, always current. */
+
+	class RealtimeReadLock
     {
     public:
         RealtimeReadLock(const Document& d, const Assets& a, Parameters& p)
@@ -68,18 +75,22 @@ public:
     void start() { m_writer.start(); }
     void stop() { m_writer.stop(); }
 
-    /* Call from ANY thread (GUI, MIDI, workers). For edits that only touch
-       Document (volume, mute, reorder, ...). */
-    void write(std::function<void(Document&)> f)
+    /* WriteDocument()
+    Call from any thread non-realtime thread (GUI, MIDI, workers), for edits
+    that only touch Document (new channels, mute, reorder, ...). */
+
+    void writeDocument(std::function<void(Document&)> f)
     {
         m_writer.push([this, f = std::move(f)]() {
             m_document.edit([&](Document& d) { f(d); });
         });
     }
 
-    /* Call from ANY thread. For edits that only touch Assets (load/unload
-       a file, swap a plugin instance, ...) without changing what
-       Document currently references. */
+    /* writeAssets()
+    Call from any thread non-realtime thread (GUI, MIDI, workers), for edits
+    that only touch Assets (load/unload a file, swap a plugin instance, ...)
+    without changing the Document. */
+
     void writeAssets(std::function<void(Assets&)> f)
     {
         m_writer.push([this, f = std::move(f)]() {
@@ -87,10 +98,14 @@ public:
         });
     }
 
-    /* Call from ANY thread. For the rare case of adding an asset AND
-       referencing it from Document in one logical transaction. See the
-       class comment for why the nesting order matters. */
-    void writeWithNewAsset(std::function<void(Document&, Assets&)> f)
+    /* writeDocumentAndAssets()
+    Call from any thread non-realtime thread (GUI, MIDI, workers), for the rare case
+	of adding an asset AND changing the Document in one transaction. The method
+	guarantees Assets publishes before Document, so a Document update that references
+	a new asset can never become visible before that asset does. read() mirrors this
+	by reading Document before Assets. */
+
+    void writeDocumentAndAssets(std::function<void(Document&, Assets&)> f)
     {
         m_writer.push([this, f = std::move(f)]() {
             m_document.edit([&](Document& d) {
@@ -99,8 +114,10 @@ public:
         });
     }
 
-    /* Call ONLY from the Real-Time Audio thread. Document is read before
-       Assets — see the class comment. */
+    /* read()
+    Call ONLY from the Real-Time Audio thread. Document is read before Assets
+    (see writeDocumentAndAssets() comment). */
+
     RealtimeReadLock read()
     {
         const Document& d = m_document.read();
@@ -108,22 +125,23 @@ public:
         return RealtimeReadLock(d, a, m_parameters);
     }
 
-	/* Load
+	/* load()
 	Helper function for loading a new document + asset combo, used when
 	you need to load new data read e.g. from disk. */
-	
+
 	void load(Document&& document, Assets&& assets)
     {
-    	writeWithNewAsset([d = std::move(document), a = std::move(assets)]
+    	writeDocumentAndAssets([d = std::move(document), a = std::move(assets)]
 						   (Document& doc, Assets& ass) mutable {
 			ass = std::move(a);
 			doc = std::move(d);
 		});
     }
 
-    /* Direct, unqueued access to Parameters for any non-realtime thread
-       (GUI, writer, ...). Same object RealtimeReadLock::getParameters()
-       refers to. */
+    /* getParameters()
+    Direct and unqueued access to Parameters for any non-realtime thread
+    (GUI, MIDI, ...). Same object RealtimeReadLock::getParameters() refers to. */
+
     Parameters& getParameters() { return m_parameters; }
 
 private:
