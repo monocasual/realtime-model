@@ -28,13 +28,15 @@ changing, so you're not paying to update Assets just to rename a track.
 
 Expectations:
   - read() is for the Real-Time Audio thread only, once per callback.
-    Don't call it from anywhere else, and don't hold on to what it
-    returns past that one callback.
+    Don't call it from anywhere else and don't hold on to what it
+    returns past that one callback;
   - writeDocument()/writeAssets()/writeDocumentAndAssets() are for every
     other thread. Never call these from the Real-Time Audio thread.
-    They queue work, they don't apply it immediately.
+    They queue work, they don't apply it immediately;
   - When adding a new asset that Document will reference, always use
-    writeDocumentAndAssets() (or load(), for loading a whole project). */
+    writeDocumentAndAssets() (or load(), for loading a whole project);
+  - The Assets class must make use of the RealtimeAssetMap to hold its data,
+    see the RealtimeAssetMap.hpp header for more information.  */
 
 template <typename Document, typename Assets, typename Parameters>
 class RealtimeModel
@@ -65,6 +67,8 @@ public:
 		const Assets&   m_assets;
 		Parameters&     m_parameters;
 	};
+
+	/* RealtimeModel */
 
 	RealtimeModel()
 	: m_document(Document{})

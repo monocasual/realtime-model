@@ -1,6 +1,16 @@
 #pragma once
+
 #include <memory>
 #include <unordered_map>
+
+/* RealtimeAssetMap
+A key-value container designed for storing assets (plug-ins, audio files, ...).
+Use this in your Asset class, e.g.:
+
+    RealtimeAssetMap<ID, Plugin>    plugins;
+    RealtimeAssetMap<ID, AudioFile> audioFiles;
+    ...
+*/
 
 template <typename Key, typename T>
 class RealtimeAssetMap
