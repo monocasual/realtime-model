@@ -141,7 +141,7 @@ public:
 
 	/* load()
 	Helper function for loading a new document + asset combo, used when
-	you need to load new data read e.g. from disk. */
+	you need to load new data e.g. read from disk. */
 
 	void load(Document&& document, Assets&& assets)
 	{
