@@ -60,9 +60,11 @@ private:
 
 		while (m_running.load(std::memory_order_relaxed))
 		{
-			// Blocks until something arrives, or the timeout elapses — the
-			// timeout is just so we periodically come back up for air and
-			// re-check m_running, not a polling interval for real work.
+			/* Waits here until something is pushed. If nothing comes, it gives
+			up after 50ms just to check whether it should stop, then goes back
+			to waiting. A real push wakes it up right away, the 50ms never delays
+			real work, it only limits how long shutdown might take if the queue
+			happens to be empty. */
 			if (m_queue.wait_dequeue_timed(cmd, std::chrono::milliseconds(50)))
 				cmd();
 		}
