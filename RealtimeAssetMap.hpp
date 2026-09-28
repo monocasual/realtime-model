@@ -12,6 +12,8 @@ Use this in your Asset class, e.g.:
     ...
 */
 
+namespace mcl
+{
 template <typename Key, typename T>
 class RealtimeAssetMap
 {
@@ -37,3 +39,4 @@ public:
 private:
 	std::unordered_map<Key, Ptr> m_map;
 };
+} // namespace mcl

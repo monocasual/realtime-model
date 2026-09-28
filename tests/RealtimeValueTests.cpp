@@ -6,6 +6,8 @@
 #include <string>
 #include <thread>
 
+using namespace mcl;
+
 namespace
 {
 /* Non-POD on purpose (heap-allocated tag field): a plain int/int struct would

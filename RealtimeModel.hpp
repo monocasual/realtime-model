@@ -38,6 +38,8 @@ Expectations:
   - The Assets class must make use of the RealtimeAssetMap to hold its data,
     see the RealtimeAssetMap.hpp header for more information.  */
 
+namespace mcl
+{
 template <typename Document, typename Assets, typename Parameters>
 class RealtimeModel
 {
@@ -164,3 +166,4 @@ private:
 	Parameters              m_parameters;
 	Writer                  m_writer;
 };
+} // namespace mcl

@@ -42,6 +42,8 @@ Usage notes
 - The reference returned by read() is only valid until the next call to
   read(). Don't hold on to it across multiple calls. */
 
+namespace mcl
+{
 template <typename T>
 class RealtimeValue final
 {
@@ -128,3 +130,4 @@ private:
 	// (only the Writer thread touches this, so it needs no synchronization)
 	int m_lastPublishedIdx;
 };
+} // namespace mcl

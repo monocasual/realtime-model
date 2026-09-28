@@ -7,6 +7,8 @@
 #include <thread>
 #include <unordered_map>
 
+using namespace mcl;
+
 namespace
 {
 /* Document only ever holds an asset ID, never the asset itself - mirrors

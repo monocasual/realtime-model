@@ -12,6 +12,8 @@ Runs queued commands, in order, on a single dedicated thread. Knows nothing
 about what the commands do or what data they touch, that's entirely up to
 whoever builds and pushes them. */
 
+namespace mcl
+{
 class Writer final
 {
 public:
@@ -84,3 +86,4 @@ private:
 	std::thread       m_thread;
 	std::atomic<bool> m_running{false};
 };
+} // namespace mcl
