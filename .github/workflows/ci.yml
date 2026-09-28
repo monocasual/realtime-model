@@ -15,4 +15,4 @@ jobs:
         run: cmake --build build --parallel
 
       - name: Run tests
-        run: ./cmake-build-debug/tests/RealtimeModelTests
+        run: ./build/tests/RealtimeModelTests
