@@ -110,6 +110,12 @@ public:
 		m_writerIdx             = old & INDEX_MASK;
 	}
 
+	/* getLastPublished()
+	Call ONLY from the Writer thread. Returns the version published by the most
+	recent edit(). Valid until the next edit(). */
+
+	const T& getLastPublished() const { return m_values[m_lastPublishedIdx]; }
+
 private:
 	static constexpr std::uint32_t PENDING_BIT = 0b100; // bit 2: "not yet picked up"
 	static constexpr std::uint32_t INDEX_MASK  = 0b011; // bits 0-1: which buffer (0-2)

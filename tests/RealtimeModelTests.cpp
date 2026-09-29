@@ -66,7 +66,7 @@ TEST_CASE("RealtimeModel - writeDocument() is applied and visible", "[RealtimeMo
 {
 	Model model;
 
-	model.writeDocument([](DummyDocument& d)
+	model.writeDocument(SwapType::HARD, [](DummyDocument& d)
 	{ d.trackCount = 3; });
 
 	REQUIRE(waitUntil([&]
@@ -91,7 +91,7 @@ TEST_CASE("RealtimeModel - writeDocumentAndAssets() applies both together", "[Re
 {
 	Model model;
 
-	model.writeDocumentAndAssets([](DummyDocument& d, DummyAssets& a)
+	model.writeDocumentAndAssets(SwapType::HARD, [](DummyDocument& d, DummyAssets& a)
 	{
 		a.files[42]         = std::make_shared<std::string>("sample.wav");
 		d.referencedAssetId = 42;
@@ -113,7 +113,7 @@ TEST_CASE("RealtimeModel - consecutive writes with no intervening read are not l
 	Model model;
 
 	for (int i = 0; i < 10; ++i)
-		model.writeDocument([](DummyDocument& d)
+		model.writeDocument(SwapType::HARD, [](DummyDocument& d)
 		{ d.trackCount += 1; });
 
 	REQUIRE(waitUntil([&]
@@ -125,7 +125,7 @@ TEST_CASE("RealtimeModel - load() replaces both Document and Assets", "[Realtime
 	// Reproduce a "load project from disk" process.
 	Model model;
 
-	model.writeDocumentAndAssets([](DummyDocument& d, DummyAssets& a)
+	model.writeDocumentAndAssets(SwapType::HARD, [](DummyDocument& d, DummyAssets& a)
 	{
 		a.files[1]          = std::make_shared<std::string>("old");
 		d.referencedAssetId = 1;

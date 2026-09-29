@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ChangeNotifier.hpp"
 #include "RealtimeValue.hpp"
 #include "Writer.hpp"
 #include <functional>
@@ -25,6 +26,14 @@ only touch one of them, and Document only ever refers to Assets by ID,
 never the actual audio data. That split is why there are three write
 methods instead of one: use whichever matches what you're actually
 changing, so you're not paying to update Assets just to rename a track.
+
+The GUI never gets something it could edit by accident: assets come back as
+read-only pointers, so the only way to change one is through writeAssets(). To
+find out something changed, the GUI checks documentChanges (usually from its
+existing timer) by calling take(), which says what kind of change happened and
+hands over the latest snapshot. current() is for when you just need today's
+state right now, changed or not, like opening a Sample Editor window. See
+ChangeNotifier.hpp for why it works this way (pull, not push).
 
 Expectations:
   - read() is for the Real-Time Audio thread only, once per callback.
@@ -84,16 +93,19 @@ public:
 	RealtimeModel(const RealtimeModel&)            = delete;
 	RealtimeModel& operator=(const RealtimeModel&) = delete;
 
-	/* WriteDocument()
-	Call from any thread non-realtime thread (GUI, MIDI, workers), for edits
-	that only touch Document (new channels, mute, reorder, ...). */
+	/* writeDocument()
+	Call from any non-realtime thread (GUI, MIDI, workers), for edits that
+	only touch Document (new channels, mute, reorder, ...). The 'type' parameter
+	tells the GUI, via documentChanges, whether it needs to rebuild (HARD) or just
+	refresh (SOFT); use NONE if the GUI doesn't need to know at all. */
 
-	void writeDocument(std::function<void(Document&)> f)
+	void writeDocument(SwapType type, std::function<void(Document&)> f)
 	{
-		m_writer.push([this, f = std::move(f)]()
+		m_writer.push([this, type, f = std::move(f)]()
 		{
 			m_document.write([&](Document& d)
 			{ f(d); });
+			documentChanges.notify(type, m_document.getLastPublished());
 		});
 	}
 
@@ -118,15 +130,16 @@ public:
 	a new asset can never become visible before that asset does. read() mirrors this
 	by reading Document before Assets. */
 
-	void writeDocumentAndAssets(std::function<void(Document&, Assets&)> f)
+	void writeDocumentAndAssets(SwapType type, std::function<void(Document&, Assets&)> f)
 	{
-		m_writer.push([this, f = std::move(f)]()
+		m_writer.push([this, type, f = std::move(f)]()
 		{
 			m_document.write([&](Document& d)
 			{
 				m_assets.write([&](Assets& a)
 				{ f(d, a); });
 			});
+			documentChanges.notify(type, m_document.getLastPublished());
 		});
 	}
 
@@ -143,11 +156,12 @@ public:
 
 	/* load()
 	Helper function for loading a new document + asset combo, used when
-	you need to load new data e.g. read from disk. */
+	you need to load new data e.g. read from disk. Always a HARD change. */
 
 	void load(Document&& document, Assets&& assets)
 	{
-		writeDocumentAndAssets([d = std::move(document), a = std::move(assets)](Document& doc, Assets& ass) mutable
+		writeDocumentAndAssets(SwapType::HARD,
+		    [d = std::move(document), a = std::move(assets)](Document& doc, Assets& ass) mutable
 		{
 			ass = std::move(a);
 			doc = std::move(d);
@@ -159,6 +173,11 @@ public:
 	(GUI, MIDI, ...). Same object RealtimeReadLock::getParameters() refers to. */
 
 	Parameters& getParameters() { return m_parameters; }
+
+	/* ChangeNotifier
+	The GUI's notification channel. See ChangeNotifier.hpp comments. */
+
+	ChangeNotifier<Document> documentChanges;
 
 private:
 	RealtimeValue<Document> m_document;
