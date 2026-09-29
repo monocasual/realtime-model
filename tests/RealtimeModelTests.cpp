@@ -166,3 +166,132 @@ TEST_CASE("RealtimeModel - getParameters() and RealtimeReadLock refer to the sam
 	lock.getParameters().playhead.store(456, std::memory_order_relaxed);
 	REQUIRE(model.getParameters().playhead.load(std::memory_order_relaxed) == 456);
 }
+
+TEST_CASE("RealtimeModel - documentChanges is empty before any write", "[RealtimeModel][ChangeNotifier]")
+{
+	Model model;
+
+	const auto update = model.documentChanges.take();
+	REQUIRE(update.type == SwapType::NONE);
+	REQUIRE(update.value == nullptr);
+	REQUIRE(model.documentChanges.getCurrent() == nullptr);
+}
+
+TEST_CASE("RealtimeModel - documentChanges reports HARD after a HARD write, then clears", "[RealtimeModel][ChangeNotifier]")
+{
+	Model model;
+
+	model.writeDocument(SwapType::HARD, [](DummyDocument& d)
+	{ d.trackCount = 1; });
+
+	REQUIRE(waitUntil([&]
+	{ return model.documentChanges.getCurrent() != nullptr; }));
+
+	const auto update = model.documentChanges.take();
+	REQUIRE(update.type == SwapType::HARD);
+	REQUIRE(update.value != nullptr);
+	REQUIRE(update.value->trackCount == 1);
+
+	// take() consumes what it reports: a second call with no new write
+	// in between must come back empty.
+	const auto second = model.documentChanges.take();
+	REQUIRE(second.type == SwapType::NONE);
+	REQUIRE(second.value == nullptr);
+}
+
+TEST_CASE("RealtimeModel - documentChanges reports SOFT after a SOFT write", "[RealtimeModel][ChangeNotifier]")
+{
+	Model model;
+
+	model.writeDocument(SwapType::SOFT, [](DummyDocument& d)
+	{ d.trackCount = 1; });
+
+	REQUIRE(waitUntil([&]
+	{ return model.documentChanges.getCurrent() != nullptr; }));
+
+	const auto update = model.documentChanges.take();
+	REQUIRE(update.type == SwapType::SOFT);
+	REQUIRE(update.value->trackCount == 1);
+}
+
+TEST_CASE("RealtimeModel - a SwapType::NONE write applies but never notifies", "[RealtimeModel][ChangeNotifier]")
+{
+	Model model;
+
+	model.writeDocument(SwapType::NONE, [](DummyDocument& d)
+	{ d.trackCount = 7; });
+
+	REQUIRE(waitUntil([&]
+	{ return model.read().getDocument().trackCount == 7; }));
+
+	// The write landed, but since nobody needs to know, take()/getCurrent()
+	// must stay empty.
+	const auto update = model.documentChanges.take();
+	REQUIRE(update.type == SwapType::NONE);
+	REQUIRE(update.value == nullptr);
+	REQUIRE(model.documentChanges.getCurrent() == nullptr);
+}
+
+TEST_CASE("RealtimeModel - multiple writes between polls collapse into one Update, HARD wins", "[RealtimeModel][ChangeNotifier]")
+{
+	Model model;
+
+	model.writeDocument(SwapType::SOFT, [](DummyDocument& d)
+	{ d.trackCount = 1; });
+	model.writeDocument(SwapType::HARD, [](DummyDocument& d)
+	{ d.trackCount = 2; });
+
+	// Wait for BOTH to land: since writes are applied in order on the
+	// writer thread, seeing the second write's effect proves the first
+	// one has already been applied too.
+	REQUIRE(waitUntil([&]
+	{ return model.read().getDocument().trackCount == 2; }));
+
+	const auto update = model.documentChanges.take();
+	REQUIRE(update.type == SwapType::HARD); // more severe of SOFT + HARD
+	REQUIRE(update.value->trackCount == 2); // the newest snapshot, not the SOFT one
+}
+
+TEST_CASE("RealtimeModel - documentChanges.getCurrent() always reflects the latest state", "[RealtimeModel][ChangeNotifier]")
+{
+	Model model;
+
+	model.writeDocument(SwapType::SOFT, [](DummyDocument& d)
+	{ d.trackCount = 5; });
+	REQUIRE(waitUntil([&]
+	{
+		const auto c = model.documentChanges.getCurrent();
+		return c != nullptr && c->trackCount == 5;
+	}));
+
+	// getCurrent() doesn't consume anything, so polling it repeatedly
+	// without calling take() must keep tracking new writes.
+	model.writeDocument(SwapType::SOFT, [](DummyDocument& d)
+	{ d.trackCount = 6; });
+	REQUIRE(waitUntil([&]
+	{
+		const auto c = model.documentChanges.getCurrent();
+		return c != nullptr && c->trackCount == 6;
+	}));
+
+	const auto update = model.documentChanges.take();
+	REQUIRE(update.type == SwapType::SOFT);
+	REQUIRE(update.value->trackCount == 6);
+}
+
+TEST_CASE("RealtimeModel - load() is reported to documentChanges as HARD", "[RealtimeModel][ChangeNotifier]")
+{
+	Model model;
+
+	DummyDocument newDoc;
+	newDoc.trackCount = 9;
+
+	model.load(std::move(newDoc), DummyAssets{});
+
+	REQUIRE(waitUntil([&]
+	{ return model.documentChanges.getCurrent() != nullptr; }));
+
+	const auto update = model.documentChanges.take();
+	REQUIRE(update.type == SwapType::HARD);
+	REQUIRE(update.value->trackCount == 9);
+}
