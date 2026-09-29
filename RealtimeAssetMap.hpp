@@ -18,7 +18,8 @@ template <typename Key, typename T>
 class RealtimeAssetMap
 {
 public:
-	using Ptr = std::shared_ptr<T>;
+	using Ptr      = std::shared_ptr<T>;
+	using PtrConst = = std::shared_ptr<const T>;
 
 	void set(Key key, Ptr asset)
 	{
@@ -30,7 +31,7 @@ public:
 		m_map.erase(key);
 	}
 
-	Ptr find(const Key& key) const
+	PtrConst find(const Key& key) const
 	{
 		auto it = m_map.find(key);
 		return it != m_map.end() ? it->second : nullptr;
