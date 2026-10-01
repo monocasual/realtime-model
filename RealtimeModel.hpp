@@ -62,21 +62,21 @@ public:
 	class RealtimeReadLock
 	{
 	public:
-		RealtimeReadLock(const Document& d, const Assets& a, Parameters& p)
+		RealtimeReadLock(const Document& d, const Assets& a, const Parameters& p)
 		: m_document(d)
 		, m_assets(a)
 		, m_parameters(p)
 		{
 		}
 
-		const Document& getDocument() const { return m_document; }
-		const Assets&   getAssets() const { return m_assets; }
-		Parameters&     getParameters() const { return m_parameters; }
+		const Document&   getDocument() const { return m_document; }
+		const Assets&     getAssets() const { return m_assets; }
+		const Parameters& getParameters() const { return m_parameters; }
 
 	private:
-		const Document& m_document;
-		const Assets&   m_assets;
-		Parameters&     m_parameters;
+		const Document&   m_document;
+		const Assets&     m_assets;
+		const Parameters& m_parameters;
 	};
 
 	/* RealtimeModel */
@@ -172,7 +172,7 @@ public:
 	Direct and unqueued access to Parameters for any non-realtime thread
 	(GUI, MIDI, ...). Same object RealtimeReadLock::getParameters() refers to. */
 
-	Parameters& getParameters() { return m_parameters; }
+	const Parameters& getParameters() const { return m_parameters; }
 
 	/* ChangeNotifier
 	The GUI's notification channel. See ChangeNotifier.hpp comments. */

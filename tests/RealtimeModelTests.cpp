@@ -28,7 +28,12 @@ struct DummyAssets
 
 struct DummyParameters
 {
-	std::atomic<int> playhead{0};
+public:
+	int  getPlayhead() const { return playhead.load(std::memory_order_relaxed); }
+	void setPlayhead(int v) const { playhead.store(v, std::memory_order_relaxed); }
+
+private:
+	mutable std::atomic<int> playhead{0};
 };
 
 using Model = RealtimeModel<DummyDocument, DummyAssets, DummyParameters>;
@@ -156,15 +161,15 @@ TEST_CASE("RealtimeModel - getParameters() and RealtimeReadLock refer to the sam
 {
 	Model model;
 
-	model.getParameters().playhead.store(123, std::memory_order_relaxed);
+	model.getParameters().setPlayhead(123);
 
 	const auto lock = model.read();
-	REQUIRE(lock.getParameters().playhead.load(std::memory_order_relaxed) == 123);
+	REQUIRE(lock.getParameters().getPlayhead() == 123);
 
 	// Mutate through the read lock, as the realtime thread would, and
 	// confirm it's visible through getParameters() too - same object.
-	lock.getParameters().playhead.store(456, std::memory_order_relaxed);
-	REQUIRE(model.getParameters().playhead.load(std::memory_order_relaxed) == 456);
+	lock.getParameters().setPlayhead(456);
+	REQUIRE(model.getParameters().getPlayhead() == 456);
 }
 
 TEST_CASE("RealtimeModel - documentChanges is empty before any write", "[RealtimeModel][ChangeNotifier]")
