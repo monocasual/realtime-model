@@ -19,7 +19,7 @@ class RealtimeAssetMap
 {
 public:
 	using Ptr      = std::shared_ptr<T>;
-	using PtrConst = = std::shared_ptr<const T>;
+	using PtrConst = std::shared_ptr<const T>;
 
 	void set(Key key, Ptr asset)
 	{
