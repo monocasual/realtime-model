@@ -29,11 +29,11 @@ changing, so you're not paying to update Assets just to rename a track.
 
 The GUI never gets something it could edit by accident: assets come back as
 read-only pointers, so the only way to change one is through writeAssets(). To
-find out something changed, the GUI checks documentChanges (usually from its
-existing timer) by calling take(), which says what kind of change happened and
-hands over the latest snapshot. current() is for when you just need today's
-state right now, changed or not, like opening a Sample Editor window. See
-ChangeNotifier.hpp for why it works this way (pull, not push).
+find out something changed, the GUI checks documentChanges and assetsChanges
+(usually from its existing timer) by calling take(), which says what kind of
+change happened and hands over the latest snapshot. current() is for when you
+just need today's state right now, changed or not, like opening a Sample Editor
+window. See ChangeNotifier.hpp for why it works this way (pull, not push).
 
 Expectations:
   - read() is for the Real-Time Audio thread only, once per callback.
@@ -114,12 +114,13 @@ public:
 	that only touch Assets (load/unload a file, swap a plugin instance, ...)
 	without changing the Document. */
 
-	void writeAssets(std::function<void(Assets&)> f)
+	void writeAssets(SwapType type, std::function<void(Assets&)> f)
 	{
-		m_writer.push([this, f = std::move(f)]()
+		m_writer.push([this, type, f = std::move(f)]()
 		{
 			m_assets.write([&](Assets& a)
 			{ f(a); });
+			assetsChanges.notify(type, m_assets.getLastPublished());
 		});
 	}
 
@@ -128,7 +129,8 @@ public:
 	of adding an asset AND changing the Document in one transaction. The method
 	guarantees Assets publishes before Document, so a Document update that references
 	a new asset can never become visible before that asset does. read() mirrors this
-	by reading Document before Assets. */
+	by reading Document before Assets. Both documentChanges and assetsChanges are
+	notified, since both actually changed. */
 
 	void writeDocumentAndAssets(SwapType type, std::function<void(Document&, Assets&)> f)
 	{
@@ -140,6 +142,7 @@ public:
 				{ f(d, a); });
 			});
 			documentChanges.notify(type, m_document.getLastPublished());
+			assetsChanges.notify(type, m_assets.getLastPublished());
 		});
 	}
 
@@ -175,9 +178,10 @@ public:
 	const Parameters& getParameters() const { return m_parameters; }
 
 	/* ChangeNotifier
-	The GUI's notification channel. See ChangeNotifier.hpp comments. */
+	The GUI's notification channels. See ChangeNotifier.hpp comments. */
 
 	ChangeNotifier<Document> documentChanges;
+	ChangeNotifier<Assets>   assetsChanges;
 
 private:
 	RealtimeValue<Document> m_document;

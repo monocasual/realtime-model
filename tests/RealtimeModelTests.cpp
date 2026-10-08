@@ -82,7 +82,7 @@ TEST_CASE("RealtimeModel - writeAssets() is applied and visible", "[RealtimeMode
 {
 	Model model;
 
-	model.writeAssets([](DummyAssets& a)
+	model.writeAssets(SwapType::NONE, [](DummyAssets& a)
 	{ a.files[7] = std::make_shared<std::string>("hello"); });
 
 	REQUIRE(waitUntil([&]
