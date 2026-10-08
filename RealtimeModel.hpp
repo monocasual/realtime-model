@@ -177,6 +177,15 @@ public:
 
 	const Parameters& getParameters() const { return m_parameters; }
 
+	/* getCurrentDocument() / getCurrentAssets()
+	Direct, non-GUI-specific access to the latest published snapshot, for any
+	non-realtime thread that needs a simple read and doesn't care about change
+	tracking. Equivalent to documentChanges.getCurrent() and assetsChanges.getCurrent().
+	See ChangeNotifier.hpp. */
+
+	std::shared_ptr<const Document> getCurrentDocument() const { return documentChanges.getCurrent(); }
+	std::shared_ptr<const Assets>   getCurrentAssets() const { return assetsChanges.getCurrent(); }
+
 	/* ChangeNotifier
 	The GUI's notification channels. See ChangeNotifier.hpp comments. */
 
