@@ -173,6 +173,34 @@ public:
 		});
 	}
 
+	/* flush()
+	Blocks until all the writes requested so far have been applied, so a read
+	right after it sees the latest data. Never call it from the realtime  thread,
+	nor from inside a write callback.
+	E. g.
+	    model.writeDocument(...);
+	    model.flush();
+	    model.getLatestDocument(); // <- this is the most up-to-date version. */
+
+	void flush()
+	{
+		/* A promise is a one-shot signal between threads: one thread completes
+		it, another waits for it. Let's use it here so the caller can wait for
+		the writer thread. */
+		std::promise<void> p;
+		auto               f = p.get_future();
+
+		/* Then we queue a command that just completes the promise. The writer
+		thread runs queued commands in order, so by the time it runs this one,
+		all earlier writes are done. Nothing is executed here; it only runs on
+		the writer thread. */
+		m_writer.push([&p]()
+		{ p.set_value(); });
+
+		/* Block until the promise is completed. */
+		f.wait();
+	}
+
 	/* getParameters()
 	Direct and unqueued access to Parameters for any non-realtime thread
 	(GUI, MIDI, ...). Same object RealtimeReadLock::getParameters() refers to. */
