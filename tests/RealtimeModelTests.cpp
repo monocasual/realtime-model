@@ -56,6 +56,44 @@ bool waitUntil(Predicate&& pred, std::chrono::milliseconds timeout = std::chrono
 	}
 	return false;
 }
+
+/* waitForUpdate()
+Polls take() until it reports a change, like the GUI timer would, and returns
+that Update. Returns an empty Update (type == NONE) if nothing arrives in time.
+Use this instead of watching getCurrent(): the snapshot is saved BEFORE the
+change flag is set, so seeing the new snapshot doesn't guarantee take() will
+report it yet. */
+template <typename Notifier>
+typename Notifier::Update waitForUpdate(Notifier& notifier, std::chrono::milliseconds timeout = std::chrono::milliseconds(500))
+{
+	const auto deadline = std::chrono::steady_clock::now() + timeout;
+	while (std::chrono::steady_clock::now() < deadline)
+	{
+		auto update = notifier.take();
+		if (update.type != SwapType::NONE)
+			return update;
+		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+	}
+	return {};
+}
+
+/* flushWriter()
+Blocks until every write issued so far has been completely applied, including
+its notify() call. Writes run in order on a single writer thread, so once this
+marker write is visible, every earlier write has fully finished. Needed when a
+test must call take() only after several writes are done, and so can't poll it
+(polling would consume the Update). */
+bool flushWriter(Model& model)
+{
+	static std::atomic<int> nextKey{-1};
+	const int               key = nextKey.fetch_sub(1);
+
+	model.writeAssets(SwapType::NONE, [key](DummyAssets& a)
+	{ a.files[key] = std::make_shared<std::string>("flush"); });
+
+	return waitUntil([&]
+	{ return model.read().getAssets().files.count(key) == 1; });
+}
 } // namespace
 
 TEST_CASE("RealtimeModel - initial state is visible without any write", "[RealtimeModel]")
@@ -172,14 +210,28 @@ TEST_CASE("RealtimeModel - getParameters() and RealtimeReadLock refer to the sam
 	REQUIRE(model.getParameters().getPlayhead() == 456);
 }
 
-TEST_CASE("RealtimeModel - documentChanges is empty before any write", "[RealtimeModel][ChangeNotifier]")
+TEST_CASE("RealtimeModel - change notifiers start seeded, with nothing pending", "[RealtimeModel][ChangeNotifier]")
 {
 	Model model;
 
-	const auto update = model.documentChanges.take();
-	REQUIRE(update.type == SwapType::NONE);
-	REQUIRE(update.value == nullptr);
-	REQUIRE(model.documentChanges.getCurrent() == nullptr);
+	// Nothing has changed yet, so take() reports nothing...
+	const auto docUpdate = model.documentChanges.take();
+	REQUIRE(docUpdate.type == SwapType::NONE);
+	REQUIRE(docUpdate.value == nullptr);
+
+	const auto assetsUpdate = model.assetsChanges.take();
+	REQUIRE(assetsUpdate.type == SwapType::NONE);
+	REQUIRE(assetsUpdate.value == nullptr);
+
+	// ...but getCurrent() already has a snapshot, with default contents.
+	const auto currentDoc = model.documentChanges.getCurrent();
+	REQUIRE(currentDoc != nullptr);
+	REQUIRE(currentDoc->trackCount == 0);
+	REQUIRE(currentDoc->referencedAssetId == -1);
+
+	const auto currentAssets = model.assetsChanges.getCurrent();
+	REQUIRE(currentAssets != nullptr);
+	REQUIRE(currentAssets->files.empty());
 }
 
 TEST_CASE("RealtimeModel - documentChanges reports HARD after a HARD write, then clears", "[RealtimeModel][ChangeNotifier]")
@@ -189,10 +241,7 @@ TEST_CASE("RealtimeModel - documentChanges reports HARD after a HARD write, then
 	model.writeDocument(SwapType::HARD, [](DummyDocument& d)
 	{ d.trackCount = 1; });
 
-	REQUIRE(waitUntil([&]
-	{ return model.documentChanges.getCurrent() != nullptr; }));
-
-	const auto update = model.documentChanges.take();
+	const auto update = waitForUpdate(model.documentChanges);
 	REQUIRE(update.type == SwapType::HARD);
 	REQUIRE(update.value != nullptr);
 	REQUIRE(update.value->trackCount == 1);
@@ -211,10 +260,7 @@ TEST_CASE("RealtimeModel - documentChanges reports SOFT after a SOFT write", "[R
 	model.writeDocument(SwapType::SOFT, [](DummyDocument& d)
 	{ d.trackCount = 1; });
 
-	REQUIRE(waitUntil([&]
-	{ return model.documentChanges.getCurrent() != nullptr; }));
-
-	const auto update = model.documentChanges.take();
+	const auto update = waitForUpdate(model.documentChanges);
 	REQUIRE(update.type == SwapType::SOFT);
 	REQUIRE(update.value->trackCount == 1);
 }
@@ -229,12 +275,14 @@ TEST_CASE("RealtimeModel - a SwapType::NONE write applies but never notifies", "
 	REQUIRE(waitUntil([&]
 	{ return model.read().getDocument().trackCount == 7; }));
 
-	// The write landed, but since nobody needs to know, take()/getCurrent()
-	// must stay empty.
+	// The write landed, but since nobody needs to know, take() stays empty.
 	const auto update = model.documentChanges.take();
 	REQUIRE(update.type == SwapType::NONE);
 	REQUIRE(update.value == nullptr);
-	REQUIRE(model.documentChanges.getCurrent() == nullptr);
+
+	// With the current notify(), a NONE write doesn't refresh the snapshot
+	// either: getCurrent() still shows the seeded default, not 7.
+	REQUIRE(model.documentChanges.getCurrent()->trackCount == 0);
 }
 
 TEST_CASE("RealtimeModel - multiple writes between polls collapse into one Update, HARD wins", "[RealtimeModel][ChangeNotifier]")
@@ -246,11 +294,8 @@ TEST_CASE("RealtimeModel - multiple writes between polls collapse into one Updat
 	model.writeDocument(SwapType::HARD, [](DummyDocument& d)
 	{ d.trackCount = 2; });
 
-	// Wait for BOTH to land: since writes are applied in order on the
-	// writer thread, seeing the second write's effect proves the first
-	// one has already been applied too.
-	REQUIRE(waitUntil([&]
-	{ return model.read().getDocument().trackCount == 2; }));
+	// Wait until both writes, and both of their notify() calls, are done.
+	REQUIRE(flushWriter(model));
 
 	const auto update = model.documentChanges.take();
 	REQUIRE(update.type == SwapType::HARD); // more severe of SOFT + HARD
@@ -264,20 +309,14 @@ TEST_CASE("RealtimeModel - documentChanges.getCurrent() always reflects the late
 	model.writeDocument(SwapType::SOFT, [](DummyDocument& d)
 	{ d.trackCount = 5; });
 	REQUIRE(waitUntil([&]
-	{
-		const auto c = model.documentChanges.getCurrent();
-		return c != nullptr && c->trackCount == 5;
-	}));
+	{ return model.documentChanges.getCurrent()->trackCount == 5; }));
 
 	// getCurrent() doesn't consume anything, so polling it repeatedly
 	// without calling take() must keep tracking new writes.
 	model.writeDocument(SwapType::SOFT, [](DummyDocument& d)
 	{ d.trackCount = 6; });
 	REQUIRE(waitUntil([&]
-	{
-		const auto c = model.documentChanges.getCurrent();
-		return c != nullptr && c->trackCount == 6;
-	}));
+	{ return model.documentChanges.getCurrent()->trackCount == 6; }));
 
 	const auto update = model.documentChanges.take();
 	REQUIRE(update.type == SwapType::SOFT);
@@ -293,10 +332,56 @@ TEST_CASE("RealtimeModel - load() is reported to documentChanges as HARD", "[Rea
 
 	model.load(std::move(newDoc), DummyAssets{});
 
-	REQUIRE(waitUntil([&]
-	{ return model.documentChanges.getCurrent() != nullptr; }));
-
-	const auto update = model.documentChanges.take();
+	const auto update = waitForUpdate(model.documentChanges);
 	REQUIRE(update.type == SwapType::HARD);
 	REQUIRE(update.value->trackCount == 9);
+}
+
+TEST_CASE("RealtimeModel - assetsChanges reports a writeAssets() change, documentChanges stays quiet", "[RealtimeModel][ChangeNotifier]")
+{
+	Model model;
+
+	model.writeAssets(SwapType::SOFT, [](DummyAssets& a)
+	{ a.files[5] = std::make_shared<std::string>("kick.wav"); });
+
+	const auto update = waitForUpdate(model.assetsChanges);
+	REQUIRE(update.type == SwapType::SOFT);
+	REQUIRE(update.value->files.count(5) == 1);
+
+	// writeAssets() never touches the Document, so nothing to report there.
+	REQUIRE(model.documentChanges.take().type == SwapType::NONE);
+}
+
+TEST_CASE("RealtimeModel - writeDocumentAndAssets() notifies both documentChanges and assetsChanges", "[RealtimeModel][ChangeNotifier]")
+{
+	Model model;
+
+	model.writeDocumentAndAssets(SwapType::HARD, [](DummyDocument& d, DummyAssets& a)
+	{
+		a.files[42]         = std::make_shared<std::string>("sample.wav");
+		d.referencedAssetId = 42;
+	});
+
+	const auto docUpdate = waitForUpdate(model.documentChanges);
+	REQUIRE(docUpdate.type == SwapType::HARD);
+	REQUIRE(docUpdate.value->referencedAssetId == 42);
+
+	const auto assetsUpdate = waitForUpdate(model.assetsChanges);
+	REQUIRE(assetsUpdate.type == SwapType::HARD);
+	REQUIRE(assetsUpdate.value->files.count(42) == 1);
+}
+
+TEST_CASE("RealtimeModel - getCurrentDocument() and getCurrentAssets() work from the start and follow writes", "[RealtimeModel]")
+{
+	Model model;
+
+	REQUIRE(model.getCurrentDocument() != nullptr);
+	REQUIRE(model.getCurrentAssets() != nullptr);
+	REQUIRE(model.getCurrentDocument()->trackCount == 0);
+
+	model.writeDocument(SwapType::SOFT, [](DummyDocument& d)
+	{ d.trackCount = 4; });
+
+	REQUIRE(waitUntil([&]
+	{ return model.getCurrentDocument()->trackCount == 4; }));
 }
