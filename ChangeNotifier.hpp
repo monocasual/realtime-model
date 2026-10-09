@@ -83,6 +83,16 @@ private:
 		m_bits.fetch_or(type == SwapType::HARD ? HARD : SOFT, std::memory_order_release);
 	}
 
+	/* seed()
+	Sets the initial snapshot without flagging a change. Call only before the
+	Writer thread starts. */
+
+	void seed(const T& initial)
+	{
+		std::lock_guard lock(m_mutex);
+		m_snapshot = std::make_shared<const T>(initial);
+	}
+
 	static constexpr std::uint8_t SOFT = 1;
 	static constexpr std::uint8_t HARD = 2;
 

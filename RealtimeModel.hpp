@@ -85,6 +85,8 @@ public:
 	: m_document(Document{})
 	, m_assets(Assets{})
 	{
+		documentChanges.seed(m_document.getLastPublished());
+		assetsChanges.seed(m_assets.getLastPublished());
 		m_writer.start();
 	}
 
