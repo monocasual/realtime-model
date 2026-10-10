@@ -4,6 +4,7 @@
 #include "RealtimeValue.hpp"
 #include "Writer.hpp"
 #include <functional>
+#include <future>
 #include <utility>
 
 /* RealtimeModel
