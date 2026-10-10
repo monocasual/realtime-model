@@ -36,23 +36,18 @@ class ChangeNotifier
 	friend class RealtimeModel;
 
 public:
-	struct Update
-	{
-		SwapType                 type{SwapType::NONE};
-		std::shared_ptr<const T> value;
-	};
+	/* take
+	Call ONLY from the GUI thread. Returns what kind of change occured since
+	the last take(), or a default state (NONE) if nothing did. */
 
-	/* Call ONLY from the GUI thread. Returns what changed since the last
-	   take(), or a default Update (type == NONE, value == nullptr) if
-	   nothing did. */
-	Update take()
+	SwapType take()
 	{
 		const std::uint8_t bits = m_bits.exchange(0, std::memory_order_acquire);
 		if (bits == 0)
-			return {}; // nothing changed: no lock taken
+			return SwapType::NONE; // nothing changed: no lock taken
 
 		std::lock_guard lock(m_mutex);
-		return {(bits & HARD) ? SwapType::HARD : SwapType::SOFT, m_snapshot};
+		return (bits & HARD) ? SwapType::HARD : SwapType::SOFT;
 	}
 
 	/* getCurrent
