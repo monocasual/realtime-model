@@ -31,10 +31,22 @@ public:
 		m_map.erase(key);
 	}
 
+	void clear()
+	{
+		m_map.clear();
+	}
+
 	PtrConst find(const Key& key) const
 	{
 		auto it = m_map.find(key);
 		return it != m_map.end() ? it->second : nullptr;
+	}
+
+	PtrConst get(const Key& key) const
+	{
+		auto it = m_map.find(key);
+		assert(it != m_map.end());
+		return it->second;
 	}
 
 private:
