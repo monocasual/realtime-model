@@ -18,8 +18,13 @@ template <typename Key, typename T>
 class RealtimeAssetMap
 {
 public:
-	using Ptr      = std::shared_ptr<T>;
-	using PtrConst = std::shared_ptr<const T>;
+	using Ptr            = std::shared_ptr<T>;
+	using PtrConst       = std::shared_ptr<const T>;
+	using Map            = std::unordered_map<Key, Ptr>;
+	using const_iterator = typename Map::const_iterator;
+
+	const_iterator begin() const { return m_map.cbegin(); }
+	const_iterator end() const { return m_map.cend(); }
 
 	void set(Key key, Ptr asset)
 	{
@@ -50,6 +55,6 @@ public:
 	}
 
 private:
-	std::unordered_map<Key, Ptr> m_map;
+	Map m_map;
 };
 } // namespace mcl
