@@ -3,8 +3,10 @@
 #include "ChangeNotifier.hpp"
 #include "RealtimeValue.hpp"
 #include "Writer.hpp"
+#include <cassert>
 #include <functional>
 #include <future>
+#include <memory>
 #include <utility>
 
 /* RealtimeModel
@@ -78,6 +80,33 @@ public:
 		const Document&   m_document;
 		const Assets&     m_assets;
 		const Parameters& m_parameters;
+	};
+
+	/* Snapshot
+	Owns Document and Assets snapshots and references the live Parameters.
+	The model must outlive the Snapshot. For non-realtime threads only. */
+
+	class Snapshot
+	{
+	public:
+		const Document&   getDocument() const { return *m_document; }
+		const Assets&     getAssets() const { return *m_assets; }
+		const Parameters& getParameters() const { return m_parameters; }
+
+	private:
+		friend class RealtimeModel;
+
+		Snapshot(std::shared_ptr<const Document> document,
+		    std::shared_ptr<const Assets> assets, const Parameters& parameters)
+		: m_document(std::move(document))
+		, m_assets(std::move(assets))
+		, m_parameters(parameters)
+		{
+		}
+
+		std::shared_ptr<const Document> m_document;
+		std::shared_ptr<const Assets>   m_assets;
+		const Parameters&               m_parameters;
 	};
 
 	/* RealtimeModel */
@@ -216,6 +245,21 @@ public:
 
 	std::shared_ptr<const Document> getCurrentDocument() const { return documentChanges.getCurrent(); }
 	std::shared_ptr<const Assets>   getCurrentAssets() const { return assetsChanges.getCurrent(); }
+
+	/* getSnapshot()
+	For non-realtime threads only. Document and Assets are acquired separately
+	and may not represent the same publication. */
+
+	Snapshot getSnapshot() const
+	{
+		auto document = getCurrentDocument();
+		auto assets   = getCurrentAssets();
+
+		assert(document != nullptr);
+		assert(assets != nullptr);
+
+		return Snapshot(std::move(document), std::move(assets), m_parameters);
+	}
 
 	/* ChangeNotifier
 	The GUI's notification channels. See ChangeNotifier.hpp comments. */
